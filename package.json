@@ -11,12 +11,17 @@
   ],
   "license": "MIT",
   "author": "EricZhai01",
+  "type": "module",
+  "scripts": {
+    "test": "node --test 'test/**/*.test.ts'"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/EricZhai01/pi-esc-clears-editor.git"
   },
   "files": [
     "extensions",
+    "src",
     "README.md",
     "LICENSE"
   ],
