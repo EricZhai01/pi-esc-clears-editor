@@ -1,6 +1,6 @@
 {
   "name": "pi-esc-clears-editor",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Pi extension: Esc clears the input editor; double Esc opens the rewind (session tree) list.",
   "keywords": [
     "pi-package",
