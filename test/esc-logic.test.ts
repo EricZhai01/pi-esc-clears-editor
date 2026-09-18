@@ -9,18 +9,14 @@ import {
   SUPPRESS_MS,
   type EscIntent,
   type EscOptions,
+  type EscState,
 } from "../src/esc-logic.ts";
 
 const T = 1_000_000;
 
-/** Editor has text, terminal does NOT report key repeat. */
-const typing: EscOptions = { intent: "clear", isRepeat: false, repeatAware: false };
-/** Same, terminal reports key repeat (Kitty protocol). */
-const typingKitty: EscOptions = { ...typing, repeatAware: true };
-/** Editor is empty: a double press opens the rewind list. */
-const empty: EscOptions = { intent: "rewind", isRepeat: false, repeatAware: false };
-/** Streaming / autocomplete / bash mode: pi owns the escape key. */
-const native: EscOptions = { intent: "native", isRepeat: false, repeatAware: false };
+const typing: EscOptions = { intent: "clear", isRepeat: false };
+const empty: EscOptions = { intent: "rewind", isRepeat: false };
+const native: EscOptions = { intent: "native", isRepeat: false };
 
 function run(events: Array<[number, Partial<EscOptions>]>, base: EscOptions) {
   let state = createEscState();
@@ -41,12 +37,8 @@ function holdEvents(initialDelay: number, interval: number, span = 4000) {
   return events;
 }
 
-test("esc esc with text defers then commits on a non-reporting terminal", () => {
+test("esc esc with text defers then commits", () => {
   assert.deepEqual(actions([[0, {}], [200, {}]], typing), ["hold", "defer"]);
-});
-
-test("esc esc with text commits immediately when repeats are reported", () => {
-  assert.deepEqual(actions([[0, {}], [200, {}]], typingKitty), ["hold", "commit"]);
 });
 
 test("esc esc on an empty editor defers, to open the rewind list", () => {
@@ -71,8 +63,8 @@ test("a third press cancels the deferred commit (held key)", () => {
   ]);
 });
 
-// Regression for the reported flicker: on an empty editor, forwarding the whole
-// burst to pi opened and closed the rewind list once per repeat.
+// Regression: on an empty editor, forwarding the whole burst to pi opened and
+// closed the rewind list once per repeat.
 test("holding on an empty editor never forwards an escape", () => {
   const out = actions(holdEvents(500, 90), empty);
   assert.equal(
@@ -101,46 +93,68 @@ test("holding on an empty editor cancels the deferred commit", () => {
   );
 });
 
-test("holding with text never clears at any repeat interval below PAIR_MS", () => {
-  for (const interval of [30, 50, 90, 150, 250, 300, 350, 390, PAIR_MS - 1]) {
-    let state = createEscState();
-    const start = T;
-    for (let at = start; at < start + 6000; at += interval) {
-      const result = handleEscPress(state, at, typing);
-      state = result.state;
-      assert.notEqual(
-        result.action,
-        "commit",
-        `held key committed at repeat interval ${interval}ms`,
-      );
-    }
-  }
-});
+/**
+ * Replay a hold against the real machine, firing the deferred timer if no key
+ * arrives to cancel it. This is the check that matters: a commit or a forward
+ * here means holding Esc would clear the editor or flicker the rewind list.
+ */
+function replayHold(
+  initialDelay: number,
+  interval: number,
+  base: EscOptions,
+  span = 8000,
+): { commits: number; forwards: number } {
+  const start = T;
+  const keys: number[] = [start];
+  for (let at = start + initialDelay; at < start + span; at += interval) keys.push(at);
+  keys.sort((a, b) => a - b);
 
-test("holding on an empty editor never commits at any repeat interval", () => {
-  for (const interval of [30, 50, 90, 150, 250, 300, 350, 390, PAIR_MS - 1]) {
-    let state = createEscState();
-    const start = T;
-    for (let at = start; at < start + 6000; at += interval) {
-      const result = handleEscPress(state, at, empty);
-      state = result.state;
-      assert.notEqual(
-        result.action,
-        "commit",
-        `held key committed at repeat interval ${interval}ms`,
-      );
-      assert.notEqual(
-        result.action,
-        "forward",
-        `held key forwarded at repeat interval ${interval}ms`,
-      );
-    }
-  }
-});
+  let state: EscState = createEscState();
+  let commits = 0;
+  let forwards = 0;
+  let timerAt: number | null = null;
 
-test("a deliberate double tap commits at every gap below PAIR_MS", () => {
+  for (let i = 0; i < keys.length; i++) {
+    const at = keys[i]!;
+    // Fire a due deferred commit before this key can cancel it.
+    if (timerAt !== null && timerAt <= at) {
+      commits++;
+      timerAt = null;
+      state = { ...state, suppressUntil: at + SUPPRESS_MS, deadline: 0 };
+    }
+    const result = handleEscPress(state, at, base);
+    state = result.state;
+    if (result.action === "commit") commits++;
+    if (result.action === "forward") forwards++;
+    timerAt = state.deadline !== 0 ? state.deadline : null;
+  }
+  if (timerAt !== null) commits++;
+  return { commits, forwards };
+}
+
+test("replaying a hold never commits or forwards, at any repeat rate", () => {
   for (const base of [typing, empty]) {
-    for (const gap of [30, 60, 100, 150, 250, 350, PAIR_MS - 1]) {
+    for (const delay of [250, 500, 1000]) {
+      for (const interval of [10, 20, 30, 50, 80, 100, 150, 200, 249, 400, 500]) {
+        const { commits, forwards } = replayHold(delay, interval, base);
+        assert.equal(
+          commits,
+          0,
+          `${base.intent}: hold committed (delay ${delay}ms, repeat ${interval}ms)`,
+        );
+        assert.equal(
+          forwards,
+          0,
+          `${base.intent}: hold forwarded (delay ${delay}ms, repeat ${interval}ms)`,
+        );
+      }
+    }
+  }
+});
+
+test("a deliberate double tap pairs at every gap below PAIR_MS", () => {
+  for (const base of [typing, empty]) {
+    for (const gap of [10, 30, 60, 100, 150, 200, PAIR_MS - 1]) {
       const first = handleEscPress(createEscState(), T, base);
       assert.equal(first.action, "hold", `${base.intent} gap ${gap}ms first press`);
       const second = handleEscPress(first.state, T + gap, base);
@@ -149,28 +163,32 @@ test("a deliberate double tap commits at every gap below PAIR_MS", () => {
   }
 });
 
-test("on a reporting terminal a double tap on an empty editor commits instantly", () => {
-  const out = run([[0, {}], [200, {}]], { ...empty, repeatAware: true });
-  assert.deepEqual(out.map((e) => e.action), ["hold", "commit"]);
-  assert.equal(out[1].state.intent, "rewind");
+test("a marked repeat is swallowed and never pairs", () => {
+  const first = handleEscPress(createEscState(), T, typing);
+  assert.equal(first.action, "hold");
+  const repeat = handleEscPress(first.state, T + 90, { ...typing, isRepeat: true });
+  assert.equal(repeat.action, "swallow");
+  assert.equal(repeat.state.intent, null, "a repeat must not arm a pending press");
 });
 
-test("a reported repeat is swallowed when the terminal reports repeats", () => {
-  const result = handleEscPress(createEscState(), T, { ...typingKitty, isRepeat: true });
-  assert.equal(result.action, "swallow");
-});
+test("one marked repeat enables instant commits for later taps", () => {
+  // The flag is only ever set by observing a marked repeat, so it does not
+  // depend on any terminal capability API.
+  let state = handleEscPress(createEscState(), T, typing).state;
+  state = handleEscPress(state, T + 90, { ...typing, isRepeat: true }).state;
+  assert.equal(state.repeatsReported, true);
 
-test("a repeat flag is ignored when the terminal cannot report repeats", () => {
-  // Some terminals set bits that look like a repeat flag without ever sending
-  // real repeat events. Only trust the flag when the protocol is actually on.
-  const result = handleEscPress(createEscState(), T, { ...typing, isRepeat: true });
-  assert.equal(result.action, "hold");
+  // Past the suppress window, a genuine tap pair now commits without waiting.
+  const a = handleEscPress(state, T + SUPPRESS_MS + 100, typing);
+  assert.equal(a.action, "hold");
+  const b = handleEscPress(a.state, T + SUPPRESS_MS + 300, typing);
+  assert.equal(b.action, "commit");
 });
 
 test("holding is ignored right after a commit", () => {
   for (const base of [typing, empty]) {
-    const committed = markCommitted(T);
-    const result = handleEscPress(committed, T + SUPPRESS_MS - 1, base);
+    const state = markCommitted(createEscState(), T);
+    const result = handleEscPress(state, T + SUPPRESS_MS - 1, base);
     assert.equal(result.action, "swallow", `${base.intent} after commit`);
   }
 });
@@ -187,6 +205,12 @@ test("after a burst ends, a genuine double tap still commits", () => {
 
 test("the deferred commit window is at least the pair window", () => {
   assert.ok(BURST_MS >= PAIR_MS, "otherwise a held key can still commit");
+  assert.ok(SUPPRESS_MS > BURST_MS, "a suppressed burst must not resume mid-hold");
+});
+
+test("the delay is the burst window and nothing else", () => {
+  // The reported lag: a double tap should never wait longer than BURST_MS.
+  assert.ok(BURST_MS <= 300, `double tap waits ${BURST_MS}ms`);
 });
 
 test("intent rides along on the hold and the commit", () => {

@@ -78,20 +78,29 @@ press(0)  ...  repeat(+500)  repeat(+590)  repeat(+680) ...
 ```
 
 Consecutive repeats are then as close together as a fast double tap, so no single
-short window separates a hold from a tap. Two mechanisms handle it:
+short window separates a hold from a tap. The extension handles it like this:
 
-- **Terminals that report key repeats** (Kitty keyboard protocol, which pi
-  requests by default) mark repeats outright, so the clear is immediate.
-- **Otherwise the clear is deferred.** On the second press it is scheduled rather
-  than performed; a third press means the key was held, so the clear is cancelled
-  and the rest of the burst is dropped.
+- **A marked repeat short-circuits everything.** `isKeyRepeat` parses the bytes,
+  so it needs no terminal state. The first time a marked repeat is seen, the
+  extension remembers that this terminal reports repeats, and every later double
+  tap commits immediately with no delay.
+- **Otherwise the commit is deferred.** On the second press it is scheduled rather
+  than performed; a third press means the key was held, so the commit is cancelled
+  and the rest of the burst is dropped. This is the only source of delay.
 
-In both cases the extension only intercepts escapes that pi would ignore. While
-streaming, with autocomplete open, in bash mode, or with an empty editor,
-escapes are forwarded untouched, so abort and the native rewind list keep working.
+The extension only intercepts escapes that pi would ignore. While streaming, with
+autocomplete open, in bash mode, or with an empty editor, escapes are forwarded
+untouched, so abort and the native rewind list keep working.
+
+Terminal capability is never queried. `isKittyProtocolActive()` from
+`@earendil-works/pi-tui` reads module-level state in a different module instance
+than the one pi runs, because pi's bundle inlines its own pi-tui copy while
+extensions resolve the package separately. That function always answers `false`
+inside an extension, so it must not gate behaviour.
 
 The thresholds live in `src/esc-logic.ts` as `PAIR_MS`, `BURST_MS` and
-`SUPPRESS_MS`.
+`SUPPRESS_MS`. A double tap never waits longer than `BURST_MS`. Set
+`PI_DOUBLE_ESC_MS` (100–1000) to tune the window.
 
 ## Development
 
