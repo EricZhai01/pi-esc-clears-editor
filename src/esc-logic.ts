@@ -41,7 +41,7 @@
  */
 function windowMs(): number {
   const raw = Number(process.env.PI_DOUBLE_ESC_MS);
-  return Number.isFinite(raw) && raw >= 100 && raw <= 1000 ? raw : 128;
+  return Number.isFinite(raw) && raw >= 100 && raw <= 1000 ? raw : 173;
 }
 
 /** Delay before a committed double press acts, and the hold-detection window. */
