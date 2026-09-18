@@ -19,7 +19,6 @@
 import { CustomEditor, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   isKeyRepeat,
-  isKittyProtocolActive,
   matchesKey,
   type EditorTheme,
   type KeybindingsManager,
@@ -63,13 +62,12 @@ class DoubleEscClearsEditor extends CustomEditor {
       return;
     }
 
+    const previousIntent = this.escState.intent;
+
     const { state, action } = handleEscPress(this.escState, Date.now(), {
       intent: this.currentIntent(),
       isRepeat: isKeyRepeat(data),
-      repeatAware: isKittyProtocolActive(),
     });
-
-    const previousIntent = this.escState.intent;
     this.escState = state;
 
     // Keep the timer in step with the state: when the logic cancels a scheduled
@@ -95,7 +93,7 @@ class DoubleEscClearsEditor extends CustomEditor {
         this.commitTimer = setTimeout(() => {
           this.commitTimer = null;
           const pending = this.escState.intent;
-          this.escState = markCommitted(Date.now());
+          this.escState = markCommitted(this.escState, Date.now());
           this.runCommit(pending, "\x1b");
         }, BURST_MS);
         return;
@@ -125,14 +123,14 @@ class DoubleEscClearsEditor extends CustomEditor {
     if (this.commitTimer === null) return null;
     this.cancelCommit();
     const pending = this.escState.intent;
-    this.escState = markCommitted(Date.now());
+    this.escState = markCommitted(this.escState, Date.now());
     this.runCommit(pending, "\x1b");
     return pending;
   }
 
   private runCommit(intent: EscIntent | null, escape: string): void {
     this.cancelCommit();
-    this.escState = markCommitted(Date.now());
+    this.escState = markCommitted(this.escState, Date.now());
 
     if (intent === "clear") {
       // setText fires onChange, so bash-mode tracking stays correct.
