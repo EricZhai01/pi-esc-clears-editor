@@ -30,27 +30,26 @@
  */
 
 /**
- * Tunable window in ms. Must cover the terminal's key-repeat interval so a held
- * key always schedules a commit that the next repeat cancels. macOS and Windows
- * repeat well inside 250ms by default, and `BURST_MS` is driven by it.
+ * Delay before a double press is acted on, in ms.
+ *
+ * This is the whole of the perceived lag: a double tap waits this long before the
+ * editor clears or the rewind list opens. It is also the threshold below which
+ * held-key repeats count as a pair, so it must stay above the terminal's repeat
+ * interval; every repeat inside the window cancels the pending action.
+ *
+ * Override with PI_DOUBLE_ESC_MS (100-1000).
  */
 function windowMs(): number {
   const raw = Number(process.env.PI_DOUBLE_ESC_MS);
-  return Number.isFinite(raw) && raw >= 100 && raw <= 1000 ? raw : 250;
+  return Number.isFinite(raw) && raw >= 100 && raw <= 1000 ? raw : 128;
 }
 
-/** Max gap between two presses to count as a deliberate double press. */
+/** Delay before a committed double press acts, and the hold-detection window. */
 export const PAIR_MS = windowMs();
 
 /**
- * Grace period after the second press before a deferred commit runs. A third
- * press inside this window means the key is held.
- *
- * Must be at least `PAIR_MS`. Any interval below `PAIR_MS` counts as a pair, so
- * a held key producing presses faster than that always schedules another
- * deferred commit. Keeping the grace window at least as long guarantees the next
- * press arrives before the timer fires and cancels it. A shorter value leaves a
- * band (BURST_MS to PAIR_MS) where a held key still commits.
+ * Alias for readability at call sites: the wait before acting is the same
+ * window used to tell a hold from a tap.
  */
 export const BURST_MS = PAIR_MS;
 

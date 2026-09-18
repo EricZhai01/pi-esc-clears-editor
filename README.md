@@ -99,8 +99,14 @@ extensions resolve the package separately. That function always answers `false`
 inside an extension, so it must not gate behaviour.
 
 The thresholds live in `src/esc-logic.ts` as `PAIR_MS`, `BURST_MS` and
-`SUPPRESS_MS`. A double tap never waits longer than `BURST_MS`. Set
-`PI_DOUBLE_ESC_MS` (100–1000) to tune the window.
+`SUPPRESS_MS`. A double tap never waits longer than `BURST_MS`, which defaults to
+128ms. Set `PI_DOUBLE_ESC_MS` (100–1000) to tune it.
+
+`PAIR_MS` does double duty: it is both the wait before acting and the threshold
+below which held-key repeats count as a pair. Because every repeat inside the
+window cancels the pending action, a held key is safe at any setting — the window
+only trades lag against how slow a deliberate double tap may be. At 128ms both
+presses must land inside 128ms.
 
 ## Development
 

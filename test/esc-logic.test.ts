@@ -38,30 +38,35 @@ function holdEvents(initialDelay: number, interval: number, span = 4000) {
 }
 
 test("esc esc with text defers then commits", () => {
-  assert.deepEqual(actions([[0, {}], [200, {}]], typing), ["hold", "defer"]);
+  assert.deepEqual(actions([[0, {}], [PAIR_GAP, {}]], typing), ["hold", "defer"]);
 });
 
 test("esc esc on an empty editor defers, to open the rewind list", () => {
-  const out = run([[0, {}], [200, {}]], empty);
+  const out = run([[0, {}], [PAIR_GAP, {}]], empty);
   assert.deepEqual(out.map((e) => e.action), ["hold", "defer"]);
   assert.equal(out[1].state.intent, "rewind");
 });
 
 test("streaming forwards both presses so abort still works", () => {
-  assert.deepEqual(actions([[0, {}], [200, {}]], native), ["forward", "forward"]);
+  assert.deepEqual(actions([[0, {}], [PAIR_GAP, {}]], native), ["forward", "forward"]);
 });
 
 test("a slow second press does not pair", () => {
-  assert.deepEqual(actions([[0, {}], [PAIR_MS + 50, {}]], typing), ["hold", "hold"]);
+  assert.deepEqual(actions([[0, {}], [NO_PAIR_GAP, {}]], typing), ["hold", "hold"]);
 });
 
 test("a third press cancels the deferred commit (held key)", () => {
-  assert.deepEqual(actions([[0, {}], [100, {}], [200, {}]], typing), [
+  assert.deepEqual(actions([[0, {}], [PAIR_GAP, {}], [PAIR_GAP * 2, {}]], typing), [
     "hold",
     "defer",
     "swallow",
   ]);
 });
+
+/** A gap that pairs: comfortably inside the window, at any setting. */
+const PAIR_GAP = Math.floor(PAIR_MS / 2);
+/** A gap that does not pair: comfortably past the window. */
+const NO_PAIR_GAP = PAIR_MS + 100;
 
 // Regression: on an empty editor, forwarding the whole burst to pi opened and
 // closed the rewind list once per repeat.
@@ -154,7 +159,7 @@ test("replaying a hold never commits or forwards, at any repeat rate", () => {
 
 test("a deliberate double tap pairs at every gap below PAIR_MS", () => {
   for (const base of [typing, empty]) {
-    for (const gap of [10, 30, 60, 100, 150, 200, PAIR_MS - 1]) {
+    for (const gap of [1, 10, 30, 60, PAIR_GAP, PAIR_MS - 1]) {
       const first = handleEscPress(createEscState(), T, base);
       assert.equal(first.action, "hold", `${base.intent} gap ${gap}ms first press`);
       const second = handleEscPress(first.state, T + gap, base);
@@ -181,7 +186,7 @@ test("one marked repeat enables instant commits for later taps", () => {
   // Past the suppress window, a genuine tap pair now commits without waiting.
   const a = handleEscPress(state, T + SUPPRESS_MS + 100, typing);
   assert.equal(a.action, "hold");
-  const b = handleEscPress(a.state, T + SUPPRESS_MS + 300, typing);
+  const b = handleEscPress(a.state, T + SUPPRESS_MS + PAIR_GAP * 2, typing);
   assert.equal(b.action, "commit");
 });
 
@@ -198,7 +203,7 @@ test("after a burst ends, a genuine double tap still commits", () => {
     const afterBurst = T + SUPPRESS_MS * 2;
     const first = handleEscPress(createEscState(), afterBurst, base);
     assert.equal(first.action, "hold", `${base.intent} first`);
-    const second = handleEscPress(first.state, afterBurst + 150, base);
+    const second = handleEscPress(first.state, afterBurst + PAIR_GAP, base);
     assert.equal(second.action, "defer", `${base.intent} second`);
   }
 });
@@ -208,16 +213,17 @@ test("the deferred commit window is at least the pair window", () => {
   assert.ok(SUPPRESS_MS > BURST_MS, "a suppressed burst must not resume mid-hold");
 });
 
-test("the delay is the burst window and nothing else", () => {
-  // The reported lag: a double tap should never wait longer than BURST_MS.
-  assert.ok(BURST_MS <= 300, `double tap waits ${BURST_MS}ms`);
+test("the delay is the window and nothing else", () => {
+  // The perceived lag: a double tap should never wait longer than the window.
+  assert.ok(BURST_MS <= 130, `double tap waits ${BURST_MS}ms`);
+  assert.equal(BURST_MS, PAIR_MS, "the wait and the pairing window must match");
 });
 
 test("intent rides along on the hold and the commit", () => {
   for (const intent of ["clear", "rewind"] as EscIntent[]) {
     const first = handleEscPress(createEscState(), T, { ...typing, intent });
     assert.equal(first.state.intent, intent);
-    const second = handleEscPress(first.state, T + 100, { ...typing, intent });
+    const second = handleEscPress(first.state, T + PAIR_GAP, { ...typing, intent });
     assert.equal(second.state.intent, intent);
   }
 });
