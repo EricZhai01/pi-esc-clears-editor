@@ -42,7 +42,7 @@ relative `extensions/` to `src/` layout. Run `/reload` to apply without restarti
 | Single Esc, agent streaming | Unchanged: aborts / restores queued messages |
 | Esc Esc, autocomplete open | Unchanged: dismisses autocomplete |
 | Esc in bash mode (`!...`) | Unchanged: exits bash mode |
-| Holding Esc | Ignored: never clears and never opens the rewind list |
+| Holding Esc | Ignored: never clears the editor, never flickers the rewind list |
 | `Ctrl+C` | Unchanged: still clears, then exits |
 
 The double-escape action follows your `doubleEscapeAction` setting: `"tree"` (default)
@@ -55,6 +55,16 @@ Pi only acts on Escape when the editor is empty (rewind list) or while streaming
 extension swallows it and waits for a second press. Swallowing it also keeps pi's
 own double-escape timer unarmed, so clearing never spills into opening the rewind
 list on the next press.
+
+### The rewind list is confirmed here, not by pi
+
+Pi's own double-escape handler has no key-repeat guard. Forwarding a held burst to
+it opened and closed the rewind list once per repeat, because a lone Escape both
+opens it (editor focused) and cancels it (`tui.select.cancel` is bound to Escape).
+
+The extension therefore confirms the double press itself and only then feeds pi
+exactly two escapes. That opens the list once and still honours `doubleEscapeAction`,
+including `fork` and `none`.
 
 ### Holding Esc
 
