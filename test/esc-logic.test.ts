@@ -110,5 +110,34 @@ test("after a burst ends, a genuine double tap still clears", () => {
 
 test("the deferred-clear window covers typical repeat intervals", () => {
   assert.ok(BURST_MS >= 200, "must exceed a repeat interval up to ~200ms");
-  assert.ok(PAIR_MS > BURST_MS, "pair window should be the looser of the two");
+  assert.ok(PAIR_MS > BURST_MS || PAIR_MS === BURST_MS, "pair window must not be tighter than the burst window");
+});
+
+// Regression: with BURST_MS < PAIR_MS, a held key repeating in the band
+// between them (BURST_MS, PAIR_MS) cleared the editor, because the deferred
+// timer fired before the next repeat could cancel it.
+test("a held key never clears at any repeat interval below PAIR_MS", () => {
+  for (const interval of [30, 50, 90, 150, 250, 300, 350, 390, PAIR_MS - 1]) {
+    let state = createEscState();
+    let timerAt: number | null = null;
+    const start = T;
+    for (let at = start; at < start + 6000; at += interval) {
+      if (timerAt !== null && timerAt <= at) {
+        assert.fail(`held key cleared the editor at repeat interval ${interval}ms`);
+      }
+      const result = handleEscPress(state, at, typing);
+      state = result.state;
+      if (state.clearDeadline !== 0) timerAt = state.clearDeadline;
+      else timerAt = null;
+    }
+  }
+});
+
+test("a deliberate double tap clears at every gap below PAIR_MS", () => {
+  for (const gap of [30, 60, 100, 150, 250, 350, PAIR_MS - 1]) {
+    const first = handleEscPress(createEscState(), T, typing);
+    assert.equal(first.action, "hold", `gap ${gap}ms first press`);
+    const second = handleEscPress(first.state, T + gap, typing);
+    assert.equal(second.action, "deferClear", `gap ${gap}ms second press`);
+  }
 });

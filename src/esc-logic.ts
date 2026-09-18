@@ -29,11 +29,15 @@ export const PAIR_MS = 400;
 /**
  * Grace period after the second press before a deferred clear runs, used only on
  * terminals that do not report key-repeat events. A third press inside this
- * window means the key is held. Must exceed the terminal's repeat interval,
- * which is normally well under 200ms; erring high only adds a short delay,
- * while erring low lets a held key clear the editor.
+ * window means the key is held.
+ *
+ * Must be at least `PAIR_MS`. Any interval below `PAIR_MS` counts as a pair, so
+ * a held key producing presses faster than that always schedules another
+ * deferred clear. Keeping the grace window at least as long guarantees that
+ * next press arrives before the timer fires and cancels it. Shorter values leave
+ * a band (BURST_MS to PAIR_MS) where a held key still clears the editor.
  */
-export const BURST_MS = 300;
+export const BURST_MS = PAIR_MS;
 
 /**
  * How long to keep dropping escapes once a held burst is recognised. Refreshed
