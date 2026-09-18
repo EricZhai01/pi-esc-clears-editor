@@ -38,11 +38,11 @@ relative `extensions/` to `src/` layout. Run `/reload` to apply without restarti
 |---|---|
 | Esc Esc, text in editor, agent idle | Editor clears |
 | Esc Esc, empty editor | Rewind list opens (`doubleEscapeAction`) |
-| Single Esc, agent idle with text | Nothing (held, then dropped) |
+| Single Esc, agent idle with text | Nothing (dropped) |
 | Single Esc, agent streaming | Unchanged: aborts / restores queued messages |
 | Esc Esc, autocomplete open | Unchanged: dismisses autocomplete |
 | Esc in bash mode (`!...`) | Unchanged: exits bash mode |
-| Holding Esc | Unchanged: key repeat is swallowed, nothing clears |
+| Holding Esc | Ignored: never clears and never opens the rewind list |
 | `Ctrl+C` | Unchanged: still clears, then exits |
 
 The double-escape action follows your `doubleEscapeAction` setting: `"tree"` (default)
@@ -58,10 +58,30 @@ list on the next press.
 
 ### Holding Esc
 
-Terminals auto-repeat a held key roughly every 30ms. Esc presses less than 49ms
-apart are treated as one held key, so holding Esc never clears the editor and never
-opens the rewind list by accident. The thresholds live in `src/esc-logic.ts` as
-`REPEAT_IGNORE_MS` and `DOUBLE_ESCAPE_MS`.
+Terminal auto-repeat cannot be detected by timing alone. Repeat starts only after
+the OS initial delay (hundreds of ms) and then fires at the repeat rate, so the
+first repeat arrives long after the previous event and looks exactly like a
+genuine second press:
+
+```
+press(0)  ...  repeat(+500)  repeat(+590)  repeat(+680) ...
+```
+
+Consecutive repeats are then as close together as a fast double tap, so no single
+short window separates a hold from a tap. Two mechanisms handle it:
+
+- **Terminals that report key repeats** (Kitty keyboard protocol, which pi
+  requests by default) mark repeats outright, so the clear is immediate.
+- **Otherwise the clear is deferred.** On the second press it is scheduled rather
+  than performed; a third press means the key was held, so the clear is cancelled
+  and the rest of the burst is dropped.
+
+In both cases the extension only intercepts escapes that pi would ignore. While
+streaming, with autocomplete open, in bash mode, or with an empty editor,
+escapes are forwarded untouched, so abort and the native rewind list keep working.
+
+The thresholds live in `src/esc-logic.ts` as `PAIR_MS`, `BURST_MS` and
+`SUPPRESS_MS`.
 
 ## Development
 
