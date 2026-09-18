@@ -1,0 +1,32 @@
+{
+  "name": "pi-esc-clears-editor",
+  "version": "0.1.0",
+  "description": "Pi extension: Esc clears the input editor; double Esc opens the rewind (session tree) list.",
+  "keywords": [
+    "pi-package",
+    "pi-coding-agent",
+    "pi-extension",
+    "keybindings",
+    "escape"
+  ],
+  "license": "MIT",
+  "author": "EricZhai01",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EricZhai01/pi-esc-clears-editor.git"
+  },
+  "files": [
+    "extensions",
+    "README.md",
+    "LICENSE"
+  ],
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  }
+}
