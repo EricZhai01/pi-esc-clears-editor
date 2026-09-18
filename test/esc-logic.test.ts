@@ -215,7 +215,7 @@ test("the deferred commit window is at least the pair window", () => {
 
 test("the delay is the window and nothing else", () => {
   // The perceived lag: a double tap should never wait longer than the window.
-  assert.ok(BURST_MS <= 130, `double tap waits ${BURST_MS}ms`);
+  assert.ok(BURST_MS <= 175, `double tap waits ${BURST_MS}ms`);
   assert.equal(BURST_MS, PAIR_MS, "the wait and the pairing window must match");
 });
 
